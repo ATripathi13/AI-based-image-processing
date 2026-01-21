@@ -61,16 +61,46 @@ def predict():
     # Decode base64 image
     img_data = data['image'].split(',')[1]
     img_bytes = base64.b64decode(img_data)
-    img = Image.open(io.BytesIO(img_bytes)).convert('L')
+    img_array = np.frombuffer(img_bytes, dtype=np.uint8)
+    img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
 
-    # Convert to grayscale and invert if necessary (MNIST is white on black)
-    img_np = np.array(img)
-    if np.mean(img_np) > 127:
-        img_np = 255 - img_np
-    img = Image.fromarray(img_np)
+    # 1. Binarize (Otsu's thresholding)
+    # MNIST is white on black. Assume user provides black on white or capture.
+    if np.mean(img) > 127:
+        img = 255 - img
+    
+    _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # Preprocess
-    img_tensor = transform(img).unsqueeze(0).to(device)
+    # 2. Find bounding box and center (MNIST standard: 20x20 digit centered in 28x28)
+    coords = cv2.findNonZero(img)
+    if coords is not None:
+        x, y, w, h = cv2.boundingRect(coords)
+        digit = img[y:y+h, x:x+w]
+        
+        # Resize digit to fit in 20x20
+        aspect = w / h
+        if w > h:
+            new_w = 20
+            new_h = int(20 / aspect)
+        else:
+            new_h = 20
+            new_w = int(20 * aspect)
+        
+        digit = cv2.resize(digit, (new_w, new_h))
+        
+        # Pad to 28x28
+        top = (28 - new_h) // 2
+        bottom = 28 - new_h - top
+        left = (28 - new_w) // 2
+        right = 28 - new_w - left
+        img = cv2.copyMakeBorder(digit, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0)
+    else:
+        # If empty
+        img = cv2.resize(img, (28, 28))
+
+    # Preprocess for model
+    img_pil = Image.fromarray(img)
+    img_tensor = transform(img_pil).unsqueeze(0).to(device)
 
     # Predict
     with torch.no_grad():

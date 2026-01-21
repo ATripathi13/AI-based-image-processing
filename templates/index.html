@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handwritten Digit Classifier</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Digit Classifier</h1>
+            <p>Upload a handwritten digit or use your camera to predict it.</p>
+        </header>
+
+        <main>
+            <div class="card glass">
+                <div class="preview-area">
+                    <canvas id="canvas" width="280" height="280"></canvas>
+                    <video id="video" width="280" height="280" autoplay playsinline style="display:none;"></video>
+                    <div id="drop-zone" class="drop-zone">
+                        <span>Drop image here or click to upload</span>
+                        <input type="file" id="file-input" accept="image/*" hidden>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button id="upload-btn" class="btn primary">Upload Image</button>
+                    <button id="camera-btn" class="btn secondary">Use Camera</button>
+                    <button id="snap-btn" class="btn success" style="display:none;">Capture</button>
+                    <button id="clear-btn" class="btn danger">Clear</button>
+                </div>
+
+                <div id="result-area" class="result-area" style="display:none;">
+                    <div class="prediction-box">
+                        <span class="label">Prediction</span>
+                        <span id="prediction" class="value">-</span>
+                    </div>
+                    <div class="confidence-box">
+                        <span class="label">Confidence</span>
+                        <div class="progress-bar">
+                            <div id="confidence-bar" class="progress-fill"></div>
+                        </div>
+                        <span id="confidence" class="value">0%</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 AI Image Processing Tool</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

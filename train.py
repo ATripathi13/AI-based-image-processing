@@ -1,66 +1,96 @@
-import tensorflow as tf
-from tensorflow.keras import layers, models
-import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torchvision
+import torchvision.transforms as transforms
 import os
 
-def load_data():
-    """Loads and preprocesses the MNIST dataset."""
-    print("Loading MNIST dataset...")
-    # Load dataset
-    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-    
-    # Normalize pixel values to be between 0 and 1
-    x_train, x_test = x_train / 255.0, x_test / 255.0
-    
-    # Add a channel dimension (images are grayscale, so 1 channel)
-    # Shape becomes (28, 28, 1)
-    x_train = np.expand_dims(x_train, -1)
-    x_test = np.expand_dims(x_test, -1)
-    
-    return (x_train, y_train), (x_test, y_test)
+# Define the CNN model
+class SimpleCNN(nn.Module):
+    def __init__(self):
+        super(SimpleCNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.fc1 = nn.Linear(64 * 7 * 7, 64)
+        self.fc2 = nn.Linear(64, 10)
+        self.relu = nn.ReLU()
 
-def create_model():
-    """Creates a simple CNN model."""
-    print("Creating model...")
-    model = models.Sequential([
-        # Convolutional base
-        layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
-        layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(64, (3, 3), activation='relu'),
-        layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(64, (3, 3), activation='relu'),
-        
-        # Dense top
-        layers.Flatten(),
-        layers.Dense(64, activation='relu'),
-        layers.Dense(10, activation='softmax') # 10 output classes for digits 0-9
-    ])
-    
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-    return model
+    def forward(self, x):
+        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.relu(self.conv2(x)))
+        x = x.view(-1, 64 * 7 * 7)
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
 def main():
-    # 1. Load Data
-    (x_train, y_train), (x_test, y_test) = load_data()
-    
-    # 2. Create Model
-    model = create_model()
-    model.summary()
-    
-    # 3. Train Model
+    # Device configuration
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
+    # Hyperparameters
+    batch_size = 64
+    learning_rate = 0.001
+    num_epochs = 3
+
+    # transform
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+
+    # MNIST dataset
+    print("Loading MNIST dataset...")
+    train_dataset = torchvision.datasets.MNIST(root='./data', train=True, transform=transform, download=True)
+    test_dataset = torchvision.datasets.MNIST(root='./data', train=False, transform=transform, download=True)
+
+    # Data loader
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
+
+    # Model, Loss, Optimizer
+    model = SimpleCNN().to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+    # Training loop
     print("Starting training...")
-    history = model.fit(x_train, y_train, epochs=5, validation_data=(x_test, y_test))
-    
-    # 4. Evaluate
+    for epoch in range(num_epochs):
+        for i, (images, labels) in enumerate(train_loader):
+            images = images.to(device)
+            labels = labels.to(device)
+
+            # Forward pass
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+
+            # Backward and optimize
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if (i+1) % 100 == 0:
+                print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {loss.item():.4f}')
+
+    # Test the model
     print("Evaluating model...")
-    test_loss, test_acc = model.evaluate(x_test, y_test, verbose=2)
-    print(f"\nTest accuracy: {test_acc}")
-    
-    # 5. Save Model
-    model_path = 'mnist_model.keras'
-    model.save(model_path)
+    model.eval()
+    with torch.no_grad():
+        correct = 0
+        total = 0
+        for images, labels in enumerate(test_loader):
+            images, labels = images[1].to(device), labels.to(device) # enumerate returns (index, data)
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+        print(f'Accuracy of the model on the 10000 test images: {100 * correct / total} %')
+
+    # Save the model checkpoint
+    model_path = 'mnist_model.pth'
+    torch.save(model.state_dict(), model_path)
     print(f"Model saved to {model_path}")
 
 if __name__ == "__main__":

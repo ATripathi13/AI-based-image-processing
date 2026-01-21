@@ -115,7 +115,8 @@ def main():
     plt.imshow(display_image, cmap='gray')
     plt.title(f"Pred: {predicted_class}, Conf: {confidence:.2f}")
     plt.axis('off')
-    plt.show()
+    plt.savefig('prediction_result.png')
+    print(f"Prediction result saved to prediction_result.png")
 
 if __name__ == "__main__":
     main()

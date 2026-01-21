@@ -79,8 +79,8 @@ def main():
     with torch.no_grad():
         correct = 0
         total = 0
-        for images, labels in enumerate(test_loader):
-            images, labels = images[1].to(device), labels.to(device) # enumerate returns (index, data)
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)

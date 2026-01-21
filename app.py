@@ -12,34 +12,55 @@ from PIL import Image
 app = Flask(__name__)
 CORS(app)
 
-# Define the CNN model (Same as training)
-class SimpleCNN(nn.Module):
+# Refined CNN model (Same as improved train.py)
+class ImprovedCNN(nn.Module):
     def __init__(self):
-        super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.fc1 = nn.Linear(64 * 7 * 7, 64)
-        self.fc2 = nn.Linear(64, 10)
-        self.relu = nn.ReLU()
+        super(ImprovedCNN, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Dropout(0.2),
+            
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Dropout(0.3),
+            
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Dropout(0.4)
+        )
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(128 * 7 * 7, 256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 10)
+        )
 
     def forward(self, x):
-        x = self.pool(self.relu(self.conv1(x)))
-        x = self.pool(self.relu(self.conv2(x)))
-        x = x.view(-1, 64 * 7 * 7)
-        x = self.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = self.features(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
         return x
 
 # Load model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = SimpleCNN().to(device)
-try:
-    model.load_state_dict(torch.load('mnist_model.pth', map_location=device, weights_only=True))
-    model.eval()
-    print("Model loaded successfully.")
-except Exception as e:
-    print(f"Error loading model: {e}")
+model = ImprovedCNN().to(device)
+
+def load_trained_model():
+    try:
+        model.load_state_dict(torch.load('mnist_model.pth', map_location=device, weights_only=True))
+        model.eval()
+        print("Model loaded successfully.")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+
+load_trained_model()
 
 # Transform
 transform = transforms.Compose([
@@ -47,6 +68,42 @@ transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))
 ])
+
+def preprocess_image(image):
+    """Advanced preprocessing: Centering and Otsu thresholding."""
+    # Convert PIL to CV2 grayscale
+    img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+    
+    # Otsu thresholding to binarize
+    _, thresh = cv2.threshold(img_cv, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    
+    # Check if we need to invert (MNIST is white on black)
+    # If the majority of pixels are white, invert it
+    if np.mean(thresh) > 127:
+        thresh = 255 - thresh
+
+    # Find bounding box of the digit
+    coords = cv2.findNonZero(thresh)
+    if coords is not None:
+        x, y, w, h = cv2.boundingRect(coords)
+        digit = thresh[y:y+h, x:x+w]
+        
+        # Padding to make it square
+        pad = max(w, h)
+        square_digit = np.zeros((pad, pad), dtype=np.uint8)
+        off_x = (pad - w) // 2
+        off_y = (pad - h) // 2
+        square_digit[off_y:off_y+h, off_x:off_x+w] = digit
+        
+        # Resize to 20x20 while keeping aspect ratio (MNIST style)
+        # Then pad to 28x28
+        digit_resized = cv2.resize(square_digit, (20, 20))
+        final_img = np.zeros((28, 28), dtype=np.uint8)
+        final_img[4:24, 4:24] = digit_resized
+        return Image.fromarray(final_img)
+    
+    # Fallback to simple resize
+    return image.convert('L')
 
 @app.route('/')
 def index():
@@ -59,48 +116,16 @@ def predict():
         return jsonify({'error': 'No image data'}), 400
 
     # Decode base64 image
-    img_data = data['image'].split(',')[1]
-    img_bytes = base64.b64decode(img_data)
-    img_array = np.frombuffer(img_bytes, dtype=np.uint8)
-    img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+    try:
+        img_data = data['image'].split(',')[1]
+        img_bytes = base64.b64decode(img_data)
+        img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
+    except Exception as e:
+        return jsonify({'error': f'Invalid image data: {e}'}), 400
 
-    # 1. Binarize (Otsu's thresholding)
-    # MNIST is white on black. Assume user provides black on white or capture.
-    if np.mean(img) > 127:
-        img = 255 - img
-    
-    _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-    # 2. Find bounding box and center (MNIST standard: 20x20 digit centered in 28x28)
-    coords = cv2.findNonZero(img)
-    if coords is not None:
-        x, y, w, h = cv2.boundingRect(coords)
-        digit = img[y:y+h, x:x+w]
-        
-        # Resize digit to fit in 20x20
-        aspect = w / h
-        if w > h:
-            new_w = 20
-            new_h = int(20 / aspect)
-        else:
-            new_h = 20
-            new_w = int(20 * aspect)
-        
-        digit = cv2.resize(digit, (new_w, new_h))
-        
-        # Pad to 28x28
-        top = (28 - new_h) // 2
-        bottom = 28 - new_h - top
-        left = (28 - new_w) // 2
-        right = 28 - new_w - left
-        img = cv2.copyMakeBorder(digit, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0)
-    else:
-        # If empty
-        img = cv2.resize(img, (28, 28))
-
-    # Preprocess for model
-    img_pil = Image.fromarray(img)
-    img_tensor = transform(img_pil).unsqueeze(0).to(device)
+    # Preprocess
+    img_processed = preprocess_image(img)
+    img_tensor = transform(img_processed).unsqueeze(0).to(device)
 
     # Predict
     with torch.no_grad():
@@ -112,6 +137,11 @@ def predict():
         'prediction': int(predicted.item()),
         'confidence': float(confidence.item())
     })
+
+@app.route('/reload_model', methods=['POST'])
+def reload_model_route():
+    load_trained_model()
+    return jsonify({'status': 'Model reloaded'})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

@@ -1,6 +1,16 @@
 # AI-Based Handwritten Digit Classifier
-
-A high-accuracy handwritten digit classification application using PyTorch, featuring a modern web frontend for real-time predictions via image upload or camera capture.
+<table>
+  <tr>
+    <td style="width: 20%; border: none;">
+      <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjB0MDlhY2doazlxZWRzcjRhMXU2bXdweDFvdGd4NnE5cDRoYTlneSZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/JOdoMjYu183JC1OqLc/giphy.gif" width="70" />
+    </td>
+    <td style="border: none; vertical-align: middle;">
+      A high-accuracy handwritten digit classification application using PyTorch, 
+      featuring a modern web frontend for real-time predictions via image upload 
+      or camera capture.
+    </td>
+  </tr>
+</table>
 
 ## 🚀 Features
 - **High Accuracy**: Achieves **99.45% accuracy** on the MNIST test set.
@@ -70,3 +80,4 @@ The system includes advanced image centering and thresholding logic in the prepr
 
 ---
 © 2026 AI Image Processing Tool.
+
